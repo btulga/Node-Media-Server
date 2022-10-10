@@ -1,5 +1,6 @@
 const _ = require('lodash');
 const NodeTransServer = require('../../node_trans_server');
+const { Stream } = require('./../../models');
 
 function postStreamTrans(req, res, next) {
   let config = req.body;
@@ -160,7 +161,52 @@ function delStream(req, res, next) {
   }
 }
 
+async function postMp4StreamTrans(req, res, next) {
+  // context values
+  let { streamingUrl, startAt, endAt } = req.body;
+  if (!streamingUrl || !startAt || !endAt) {
+    res.status(400);
+    res.json({ message: "Failed to start a record" });
+    return;
+  }
+
+  let YYYY, MM, DD, HH, mm, SS;
+  // old request compatible
+  if (startAt.match(/^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}$/g)) {
+    [YYYY, MM, DD, HH, mm, SS] = startAt.split(/-/);
+    startAt = `${YYYY}-${MM}-${DD}T${HH}:${mm}:00.00+08:00`;
+  }
+  if (endAt.match(/^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}-\d{2}$/g)) {
+    [YYYY, MM, DD, HH, mm, SS] = endAt.split(/-/);
+    endAt = `${YYYY}-${MM}-${DD}T${HH}:${mm}:00.00+08:00`;
+  }
+
+  let streamPath = (new URL(streamingUrl)).pathname;
+  let appCode = (new URL(streamingUrl)).hostname.split('.')[0];
+  let publisherId = this.publishers.get(streamPath);
+
+  // create stream record
+  await Stream.create({
+    appCode,
+    streamPath,
+    startAt,
+    endAt,
+  });
+
+  // call force post publish
+  if (publisherId != null) {
+    this.nodeEvent.emit('forcePostPublish', publisherId, streamPath, {});
+  }
+  res.json({ message: 'OK Success' });
+}
+
+function stopStreamRecord(req, res, next) {
+  res.json("ok");
+}
+
 exports.delStream = delStream;
 exports.getStreams = getStreams;
 exports.getStream = getStream;
 exports.postStreamTrans = postStreamTrans;
+exports.postMp4StreamTrans = postMp4StreamTrans;
+exports.stopStreamRecord = stopStreamRecord;

@@ -1,4 +1,6 @@
-#!/usr/bin/env node 
+#!/usr/bin/env node
+require('dotenv').config();
+const { MEDIA_ROOT, WEB_ROOT, FFMPEG, API_USER, API_PASS, RTMP_PORT, HTTP_PORT, MP4_ROOT, MP4_S3_ROOT } = process.env;
 
 const NodeMediaServer = require('..');
 let argv = require('minimist')(process.argv.slice(2),
@@ -10,12 +12,12 @@ let argv = require('minimist')(process.argv.slice(2),
       'https_port': 's',
     },
     default:{
-      'rtmp_port': 1935,
-      'http_port': 8000,
+      'rtmp_port': RTMP_PORT,
+      'http_port': HTTP_PORT,
       'https_port': 8443,
     }
   });
-  
+
 if (argv.help) {
   console.log('Usage:');
   console.log('  node-media-server --help // print help information');
@@ -32,32 +34,63 @@ const config = {
     gop_cache: true,
     ping: 30,
     ping_timeout: 60,
-    // ssl: {
-    //   port: 443,
-    //   key: __dirname+'/privatekey.pem',
-    //   cert: __dirname+'/certificate.pem',
-    // }
   },
   http: {
     port: argv.http_port,
-    mediaroot: __dirname+'/media',
-    webroot: __dirname+'/www',
+    mediaroot: MEDIA_ROOT,
+    webroot: WEB_ROOT,
     allow_origin: '*',
     api: true
   },
-  https: {
-    port: argv.https_port,
-    key: __dirname+'/privatekey.pem',
-    cert: __dirname+'/certificate.pem',
-  },
   auth: {
     api: true,
-    api_user: 'admin',
-    api_pass: 'admin',
+    api_user: API_USER,
+    api_pass: API_PASS,
     play: false,
     publish: false,
     secret: 'nodemedia2017privatekey'
-  }
+  },
+  trans: {
+    ffmpeg: FFMPEG,
+    tasks: [
+      {
+        app: 'live',
+        // audio encode
+        ac: "aac",
+        acParam: ['-ab', '64k', '-ac', '1', '-ar', '44100'],
+        // apple live stream
+        hls: true,
+        hlsFlags: '[hls_time=5:hls_list_size=5:hls_flags=delete_segments]',
+        // dash live stream
+        dash: true,
+        dashFlags: '[f=dash:seg_duration=5:window_size=5:extra_window_size=5]',
+      },
+      // seperate record task
+      {
+        app: 'live',
+        mp4: true,
+        mp4Flags: '[movflags=frag_keyframe+empty_moov]',
+        mp4root: MP4_ROOT,
+        mp4S3root: MP4_S3_ROOT,
+      }
+    ],
+  },
+  fission: {
+    ffmpeg: FFMPEG,
+    tasks: [
+      {
+        rule: "live/*",
+        model: [
+          {
+            ab: "96k",
+            vb: "1000k",
+            vs: "854x480",
+            vf: "24",
+          }
+        ]
+      }
+    ]
+  },
 };
 
 

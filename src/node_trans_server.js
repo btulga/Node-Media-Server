@@ -47,12 +47,14 @@ class NodeTransServer {
       apps += this.config.trans.tasks[i].app;
       apps += ' ';
     }
+    context.nodeEvent.on('forcePostPublish', this.onForcePostPublish.bind(this));
     context.nodeEvent.on('postPublish', this.onPostPublish.bind(this));
     context.nodeEvent.on('donePublish', this.onDonePublish.bind(this));
     Logger.log(`Node Media Trans Server started for apps: [ ${apps}] , MediaRoot: ${this.config.http.mediaroot}, ffmpeg version: ${version}`);
   }
 
   onPostPublish(id, streamPath, args) {
+    this.transSessions.set(id, new Map())
     let regRes = /\/(.*)\/(.*)/gi.exec(streamPath);
     let [app, name] = _.slice(regRes, 1);
     let i = this.config.trans.tasks.length;
@@ -60,16 +62,21 @@ class NodeTransServer {
       let conf = { ...this.config.trans.tasks[i] };
       conf.ffmpeg = this.config.trans.ffmpeg;
       conf.mediaroot = this.config.http.mediaroot;
+      if (!conf.mp4root) {
+        conf.mp4root = this.config.http.mediaroot;
+      }
       conf.rtmpPort = this.config.rtmp.port;
       conf.streamPath = streamPath;
       conf.streamApp = app;
       conf.streamName = name;
       conf.args = args;
+      console.log('-----------starting trans session--------------');
+      console.log(conf);
       if (app === conf.app) {
         let session = new NodeTransSession(conf);
-        this.transSessions.set(id, session);
+        this.transSessions.get(id).set(i, session);
         session.on('end', () => {
-          this.transSessions.delete(id);
+          this.transSessions.get(id).delete(i);
         });
         session.run();
       }
@@ -77,9 +84,24 @@ class NodeTransServer {
   }
 
   onDonePublish(id, streamPath, args) {
-    let session = this.transSessions.get(id);
-    if (session) {
-      session.end();
+    console.log('-----done publish---------------');
+    console.log(streamPath);
+    console.log('-----------------------');
+    let sessions = this.transSessions.get(id);
+    if (sessions) {
+      sessions.forEach((value, key, map) => {
+        // value = session
+        value.end();
+      });
+    }
+  }
+
+  onForcePostPublish(id, streamPath, args) {
+    let sessions = this.transSessions.get(id);
+    if (sessions) {
+      sessions.forEach((value, key, map) => {
+        value.run();
+      });
     }
   }
 }
